@@ -771,7 +771,7 @@
         [0.90, 0.34], [0.82, 0.52], [0.89, 0.70]
       ];
       const delays = [0, 360, 720, 0, 360, 720];
-      const maxRadius = Math.min(48, Math.max(25, window.innerWidth * 0.045));
+      const maxRadius = Math.min(96, Math.max(42, window.innerWidth * 0.075));
       fireworksActive = true;
       if (!reducedMotion) {
         fireworksResizeHandler = resizeFireworksCanvas;
@@ -795,8 +795,8 @@
               vy: Math.sin(angle) * speed,
               life: 1.05 + Math.random() * 0.45,
               lifetime: 1.5,
-              size: 1.4 + Math.random() * 1.2,
-              glow: 7,
+              size: 2.2 + Math.random() * 1.8,
+              glow: 12,
               color: index % 4 === 0 ? colors[(burstIndex + 2) % colors.length] : color
             };
             burstParticles.push(particle);

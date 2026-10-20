@@ -390,6 +390,39 @@
       position:absolute; top:10px; left:-5px; width:15px; height:7px;
       border:1px solid #493954; border-radius:7px 8px 3px 3px; background:#fff;
     }
+    .indoor-scene.is-fading-out { opacity:0; transition:opacity 1.2s ease; }
+    .anniversary-finale {
+      position:fixed; z-index:20; inset:0; width:100vw; height:100vh; height:100dvh;
+      overflow:hidden; display:grid; place-items:center; background:#000;
+      opacity:0; visibility:hidden; pointer-events:none;
+      transition:opacity 1s ease,visibility 0s linear 1s;
+    }
+    .anniversary-finale.is-visible {
+      opacity:1; visibility:visible; pointer-events:auto;
+      transition:opacity 1s ease;
+    }
+    .fireworks-canvas { position:absolute; inset:0; width:100%; height:100%; }
+    .finale-message {
+      position:relative; z-index:1; width:min(90vw,760px); padding:24px;
+      opacity:0; transform:translateY(18px); text-align:center;
+      transition:opacity 1.1s ease,transform 1.1s ease;
+    }
+    .finale-message.is-revealed { opacity:1; transform:translateY(0); }
+    .finale-message h1 {
+      margin:0; color:#fff1e8; font-family:Georgia,"Times New Roman",serif;
+      font-size:clamp(30px,6.5vw,66px); font-weight:400; letter-spacing:.025em;
+      text-shadow:0 0 18px rgba(255,215,185,.25),0 2px 14px rgba(232,147,190,.35);
+    }
+    .finale-year {
+      margin:12px 0; color:#f4c5dc; font-family:Georgia,"Times New Roman",serif;
+      font-size:clamp(27px,5vw,48px); letter-spacing:.08em;
+      text-shadow:0 0 14px rgba(233,166,205,.35);
+    }
+    .finale-signature {
+      margin:0; color:#e7c98a; font-family:Georgia,"Times New Roman",serif;
+      font-size:clamp(17px,3.4vw,29px); letter-spacing:.04em;
+      text-shadow:0 0 12px rgba(231,201,138,.3);
+    }
     .transition-glow {
       position:absolute; z-index:10; inset:0; opacity:0; visibility:hidden; pointer-events:none;
       background:radial-gradient(circle at 50% 55%,rgba(255,248,203,.98),rgba(255,204,231,.7) 24%,rgba(208,171,255,.18) 60%,transparent 78%);
@@ -409,6 +442,8 @@
       .sofa-cushion { top:13px; height:40px; }
       .seated-couple { bottom:calc(12% + 27px); gap:1px; }
       .indoor-character.character { transform:scale(.84); transform-origin:bottom center; }
+      .finale-message { width:100%; padding:18px 12px; }
+      .finale-year { margin:8px 0; }
     }
     @media (prefers-reduced-motion:reduce) {
       *,*::before,*::after { scroll-behavior:auto !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
@@ -485,6 +520,14 @@
       </div>
     </div>
    </section>
+   <section class="anniversary-finale" id="anniversary-finale" aria-label="Anniversary finale" aria-hidden="true">
+    <canvas class="fireworks-canvas" id="fireworks-canvas" aria-hidden="true"></canvas>
+    <div class="finale-message" id="finale-message">
+      <h1>Happy Anniversary</h1>
+      <p class="finale-year">1.11y</p>
+      <p class="finale-signature">Love Jib Tee Sood</p>
+    </div>
+   </section>
    <div class="transition-glow" id="transition-glow" aria-hidden="true"></div>
    <dialog class="password-dialog" id="password-dialog" aria-labelledby="dialog-title">
     <h2 id="dialog-title">A little surprise ♡</h2>
@@ -517,10 +560,14 @@
     const videoPlaceholderMessage = videoPlaceholder.querySelector('span');
     const mediaStatus = document.getElementById('media-status');
     const music = document.getElementById('anniversary-music');
+    const finale = document.getElementById('anniversary-finale');
+    const finaleMessage = document.getElementById('finale-message');
+    const fireworksCanvas = document.getElementById('fireworks-canvas');
+    const fireworksContext = fireworksCanvas.getContext('2d');
     const videoClips = Array.from({ length: 12 }, (_, index) => `assets/video/${index + 1}.mp4`);
     let currentClip = 0;
     video.volume = 0.2;
-    music.volume = 0.4;
+    music.volume = 0.2;
     music.src = 'assets/song.mp3';
     let musicLeadInStarted = false;
     let musicLeadInTimer = null;
@@ -528,6 +575,13 @@
     const anniversaryPassword = 'Pr0mlovejib';
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let sceneState = 'outdoor';
+    let finaleStarted = false;
+    let finaleTimers = new Set();
+    let fireworksFrame = null;
+    let fireworksResizeHandler = null;
+    let fireworksActive = false;
+    let fireworksParticles = [];
+    let fireworksLastFrame = 0;
     let balloonInterval;
     const balloonTimeouts = new Set();
     const colors = ['#ef2850', '#f36ab2', '#d9143b', '#ff8ec8'];
@@ -631,6 +685,166 @@
       mediaStatus.hidden = false;
     }
 
+    function scheduleFinaleTimer(callback, delay) {
+      const timer = window.setTimeout(() => {
+        finaleTimers.delete(timer);
+        callback();
+      }, reducedMotion ? 0 : delay);
+      finaleTimers.add(timer);
+      return timer;
+    }
+
+    function resizeFireworksCanvas() {
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const oldWidth = fireworksCanvas.width / ratio;
+      const oldHeight = fireworksCanvas.height / ratio;
+      fireworksCanvas.width = Math.round(width * ratio);
+      fireworksCanvas.height = Math.round(height * ratio);
+      fireworksContext.setTransform(ratio, 0, 0, ratio, 0, 0);
+      if (oldWidth && oldHeight) {
+        for (const particle of fireworksParticles) {
+          particle.x *= width / oldWidth;
+          particle.y *= height / oldHeight;
+          particle.vx *= width / oldWidth;
+          particle.vy *= height / oldHeight;
+        }
+      }
+    }
+
+    function drawFireworks(now) {
+      if (!fireworksActive) return;
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const delta = Math.min((now - (fireworksLastFrame || now)) / 1000, 0.04);
+      fireworksLastFrame = now;
+      fireworksContext.clearRect(0, 0, width, height);
+
+      for (const particle of fireworksParticles) {
+        particle.life -= delta;
+        if (particle.life <= 0) continue;
+        particle.vx *= Math.pow(0.985, delta * 60);
+        particle.vy = particle.vy * Math.pow(0.985, delta * 60) + 12 * delta;
+        particle.x += particle.vx * delta;
+        particle.y += particle.vy * delta;
+        const alpha = Math.min(particle.life / particle.lifetime, 1);
+        fireworksContext.globalAlpha = alpha;
+        fireworksContext.fillStyle = particle.color;
+        fireworksContext.shadowColor = particle.color;
+        fireworksContext.shadowBlur = particle.glow;
+        fireworksContext.beginPath();
+        fireworksContext.arc(particle.x, particle.y, particle.size * (0.65 + alpha * 0.35), 0, Math.PI * 2);
+        fireworksContext.fill();
+      }
+      fireworksContext.globalAlpha = 1;
+      fireworksContext.shadowBlur = 0;
+      fireworksParticles = fireworksParticles.filter(particle => particle.life > 0);
+      if (fireworksParticles.length) {
+        fireworksFrame = window.requestAnimationFrame(drawFireworks);
+      } else {
+        stopFireworks();
+      }
+    }
+
+    function stopFireworks() {
+      fireworksActive = false;
+      if (fireworksFrame !== null) {
+        window.cancelAnimationFrame(fireworksFrame);
+        fireworksFrame = null;
+      }
+      if (fireworksResizeHandler) {
+        window.removeEventListener('resize', fireworksResizeHandler);
+        fireworksResizeHandler = null;
+      }
+      fireworksParticles = [];
+      fireworksContext.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      for (const timer of finaleTimers) window.clearTimeout(timer);
+      finaleTimers.clear();
+    }
+
+    function launchFireworks() {
+      resizeFireworksCanvas();
+      const colors = ['#f3a4ce', '#d98adf', '#f0cf83', '#fff1e8', '#d8b3ff', '#ef83b7'];
+      const positions = [
+        [0.10, 0.34], [0.18, 0.52], [0.11, 0.70],
+        [0.90, 0.34], [0.82, 0.52], [0.89, 0.70]
+      ];
+      const delays = [0, 360, 720, 0, 360, 720];
+      const maxRadius = Math.min(48, Math.max(25, window.innerWidth * 0.045));
+      fireworksActive = true;
+      if (!reducedMotion) {
+        fireworksResizeHandler = resizeFireworksCanvas;
+        window.addEventListener('resize', fireworksResizeHandler);
+      }
+
+      positions.forEach(([xRatio, yRatio], burstIndex) => {
+        scheduleFinaleTimer(() => {
+          const centerX = window.innerWidth * xRatio;
+          const centerY = window.innerHeight * yRatio;
+          const color = colors[burstIndex];
+          const count = 20;
+          const burstParticles = [];
+          for (let index = 0; index < count; index++) {
+            const angle = (Math.PI * 2 * index) / count;
+            const speed = maxRadius * (0.55 + Math.random() * 0.45);
+            const particle = {
+              x: centerX,
+              y: centerY,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              life: 1.05 + Math.random() * 0.45,
+              lifetime: 1.5,
+              size: 1.4 + Math.random() * 1.2,
+              glow: 7,
+              color: index % 4 === 0 ? colors[(burstIndex + 2) % colors.length] : color
+            };
+            burstParticles.push(particle);
+            if (!reducedMotion) fireworksParticles.push(particle);
+          }
+          if (reducedMotion) {
+            fireworksContext.globalAlpha = 0.65;
+            burstParticles.forEach(particle => {
+              fireworksContext.fillStyle = particle.color;
+              fireworksContext.beginPath();
+              fireworksContext.arc(particle.x + particle.vx * 0.45, particle.y + particle.vy * 0.45, particle.size, 0, Math.PI * 2);
+              fireworksContext.fill();
+            });
+            fireworksContext.globalAlpha = 1;
+            if (burstIndex === positions.length - 1) fireworksActive = false;
+            return;
+          }
+          if (fireworksFrame === null) {
+            fireworksLastFrame = 0;
+            fireworksFrame = window.requestAnimationFrame(drawFireworks);
+          }
+        }, delays[burstIndex]);
+      });
+    }
+
+    function beginAnniversaryFinale() {
+      if (finaleStarted || sceneState !== 'indoor' || !video.ended) return;
+      finaleStarted = true;
+      sceneState = 'finale-transition';
+      world.dataset.scene = sceneState;
+      indoorScene.classList.add('is-fading-out');
+
+      scheduleFinaleTimer(() => {
+        indoorScene.classList.remove('is-active', 'is-fading-out');
+        indoorScene.setAttribute('aria-hidden', 'true');
+        indoorScene.inert = true;
+        finale.setAttribute('aria-hidden', 'false');
+        finale.classList.add('is-visible');
+        sceneState = 'finale';
+        world.dataset.scene = sceneState;
+
+        scheduleFinaleTimer(() => {
+          finaleMessage.classList.add('is-revealed');
+          scheduleFinaleTimer(launchFireworks, 450);
+        }, 350);
+      }, 1200);
+    }
+
     video.addEventListener('loadeddata', () => {
       video.hidden = false;
       videoPlaceholder.hidden = true;
@@ -689,7 +903,11 @@
       }
     });
     video.addEventListener('ended', () => {
-      if (currentClip === videoClips.length - 1) return;
+      if (!video.ended) return;
+      if (currentClip === videoClips.length - 1) {
+        beginAnniversaryFinale();
+        return;
+      }
       currentClip += 1;
       video.setAttribute('aria-label', `Anniversary memories video, clip ${currentClip + 1} of ${videoClips.length}`);
       video.src = videoClips[currentClip];

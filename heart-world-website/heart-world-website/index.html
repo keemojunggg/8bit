@@ -467,12 +467,12 @@
         <video id="anniversary-video" controls playsinline preload="metadata" hidden aria-label="Anniversary memories video"></video>
         <div class="video-placeholder" id="video-placeholder" role="status">
           <span>Our memories will play here ♡</span>
-          <small>Videos 1–8 play in order ♡</small>
+          <small>Videos 1–12 play in order ♡</small>
         </div>
         <p class="media-status" id="media-status" role="status" aria-live="polite" hidden></p>
       </div>
     </div>
-    <audio id="anniversary-music" preload="metadata" loop></audio>
+    <audio id="anniversary-music" preload="metadata"></audio>
     <div class="sofa" aria-hidden="true">
       <span class="sofa-cushion left"></span><span class="sofa-cushion right"></span>
     </div>
@@ -517,7 +517,7 @@
     const videoPlaceholderMessage = videoPlaceholder.querySelector('span');
     const mediaStatus = document.getElementById('media-status');
     const music = document.getElementById('anniversary-music');
-    const videoClips = Array.from({ length: 8 }, (_, index) => `assets/video/${index + 1}.mp4`);
+    const videoClips = Array.from({ length: 12 }, (_, index) => `assets/video/${index + 1}.mp4`);
     let currentClip = 0;
     video.volume = 0.2;
     music.volume = 0.4;
@@ -634,7 +634,7 @@
     video.addEventListener('loadeddata', () => {
       video.hidden = false;
       videoPlaceholder.hidden = true;
-      videoPlaceholderMessage.textContent = 'Videos 1–8 play in order ♡';
+      videoPlaceholderMessage.textContent = 'Videos 1–12 play in order ♡';
     });
     video.addEventListener('error', () => {
       video.hidden = true;
@@ -689,10 +689,7 @@
       }
     });
     video.addEventListener('ended', () => {
-      if (currentClip === videoClips.length - 1) {
-        music.pause();
-        return;
-      }
+      if (currentClip === videoClips.length - 1) return;
       currentClip += 1;
       video.setAttribute('aria-label', `Anniversary memories video, clip ${currentClip + 1} of ${videoClips.length}`);
       video.src = videoClips[currentClip];
